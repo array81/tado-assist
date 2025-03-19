@@ -11,6 +11,7 @@ The operation is based on the use of the [PyTado](https://github.com/chrism0dwk/
 - Know the number of mobile devices (associated with the Tado account) in the home. This information is provided as an attribute;
 - Know the zones where an open window is detected. This information is provided as an attribute but only if heating suspension is disabled;
 - Ability to manage multiple accounts;
+- Support english and italian languages, but you can easily translate it into your language;
 
 ### Installation
 **Method 1**
@@ -20,6 +21,11 @@ The operation is based on the use of the [PyTado](https://github.com/chrism0dwk/
 
 **Method 2**
 1. Download and copy custom_components/tado_assist folder to custom_components folder in your Home Assistant config folder;
+
+### Contribution
+If you like my work, consider donating or contributing to the project, for example by translating the integration.
+
+[<img src="/assets/images/support_me_on_kofi.png" width="300">](https://ko-fi.com/array81)
 
 ### Preview
 Integration controls and sensors:
