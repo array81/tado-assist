@@ -1,0 +1,13 @@
+{
+    "domain": "tado_assist",
+    "name": "Tado Assist",
+    "version": "1.0.0",
+    "documentation": "https://github.com/array81/tado-assist",
+    "dependencies": [
+        "PyTado"
+    ],
+    "codeowners": [
+        "@array81"
+    ],
+    "iot_class": "cloud_polling"
+}
