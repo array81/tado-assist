@@ -1,4 +1,4 @@
-# 🌡️ Tado Assist - Home Assistant Integration
+# Tado Assist - Home Assistant Integration
 
 ![Tado Assist](https://img.shields.io/badge/Tado-Integration-blue.svg)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Compatible-green.svg)
