@@ -1,0 +1,81 @@
+{	
+	"config": {
+		"step": {
+			"user": {
+				"title": "Tado Assist Settings",
+				"description": "Insert your Tado account login data and select the update interval.",
+				"data": {
+					"username": "Username",
+					"password": "Password",
+					"scan_interval": "Update interval"
+				}
+			}
+		},
+		"error": {
+			"cannot_connect": "Unable to connect to Tado. Please check your login data and try again."
+		}
+	},
+	"options": {
+		"step": {
+			"init": {
+				"title": "Opzioni di Tado Assist",
+				"description": "Select the update interval.",
+				"data": {
+					"scan_interval": "Update interval"
+				}
+			}
+		}
+	},
+	"entity": {
+		"binary_sensor": {
+			"tado_binary_home_state": {
+				"name": "Mode",
+				"description": "Geolocation mode activated",
+                "state_attributes": {
+                    "devices_at_home": {
+                        "name": "Mobile devices in the home"
+                    }
+                },
+				"state": {
+					"on": "Home",
+					"off": "Away"
+				}
+			},
+			"tado_binary_open_windows": {
+				"name": "Windows",
+				"description": "Presence of open windows in the house",
+                "state_attributes": {
+                    "windows_open_zones": {
+                        "name": "Zones with open windows"
+                    }
+                },
+				"state": {
+					"on": "Open",
+					"off": "Close"
+				}
+			}
+		},
+		"switch": {
+			"tado_switch_assist": {
+				"name": "Enable Assist"
+			},
+			"tado_switch_georeferencing": {
+				"name": "Georeferencing"
+			},
+			"tado_switch_auto_window_control": {
+				"name": "Window Control"
+			}
+		}
+	},
+	"selector": {
+		"scan_interval": {
+			"options": {
+				"15_seconds": "15 seconds",
+				"30_seconds": "30 seconds",
+				"1_minute": "1 minute",
+				"2_minutes": "2 minutes",
+				"5_minutes": "5 minutes"
+			}
+		}
+	}
+}
