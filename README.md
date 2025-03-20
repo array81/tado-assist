@@ -9,7 +9,7 @@ This integration for **Home Assistant** allows you to use **Tado**'s API to crea
 The integration relies on the PyTado library, which is automatically installed alongside it.
 
 ## ✨ Features
-- **Automation**: Automates the change of operating mode (Home or Away) and the suspension of home heating..
+- **Automation**: Automates the change of operating mode (Home or Away) and the suspension of home heating.
 - **Mobile Device Tracking**: Detect mobile devices linked to Tado and their home presence.
 - **Home & Away Modes**: Get your home to "Away" or "Home" mode with ease.
 - **Open Window Detection**: Get alerts when a window is detected as open.
@@ -58,5 +58,5 @@ Stay up to date with the latest changes and improvements:
 - First public version.
 
 ---
-📢 **Stay updated!** Follow the project on GitHub for updates and new features. 🚀
+📢 **Stay updated!** Follow the project on GitHub for updates and new features.
 
