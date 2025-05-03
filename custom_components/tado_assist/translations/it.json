@@ -1,81 +1,109 @@
 {
-	"config": {
-		"step": {
-			"user": {
-				"title": "Configura Tado Assist",
-				"description": "Inserisci le credenziali del tuo account Tado e seleziona l'intervallo di aggiornamento.",
-				"data": {
-					"username": "Nome utente",
-					"password": "Password",
-					"scan_interval": "Intervallo di aggiornamento"
-				}
-			}
+    "config": {
+        "step": {
+            "activation": {
+                "title": "Autenticazione richiesta",
+                "description": "Per completare l'autenticazione, esesgui le istruzioni indicate su questo URL: {auth_url}\nUna volta terminato premi INVIA per proseguire.",
+                "description_placeholders": {
+                    "auth_url": "URL da visitare per completare l'autenticazione"
+                }
+            },
+            "reauth_activation": {
+                "title": "Autenticazione richiesta",
+                "description": "Necessaria nuova autenticazione, esesgui le istruzioni indicate su questo URL: {auth_url}\nUna volta terminato premi INVIA per proseguire.",
+                "description_placeholders": {
+                    "auth_url": "URL da visitare per completare l'autenticazione"
+                }
+            },
+            "config": {
+                "title": "Configurazione Tado Assist",
+                "description": "Scegli l'intervallo di aggiornamento dei dati."
+            }
+        },
+		"data": {
+		  "auth_submitted": "Autenticazione sul sito Tado completata"
 		},
-		"error": {
-			"cannot_connect": "Impossibile connettersi a Tado. Controlla le credenziali e riprova."
-		}
-	},
-	"options": {
-		"step": {
-			"init": {
-				"title": "Opzioni di Tado Assist",
-				"description": "Seleziona l'intervallo di aggiornamento.",
-				"data": {
-					"scan_interval": "Intervallo di aggiornamento"
-				}
-			}
-		}
-	},
-	"entity": {
-		"binary_sensor": {
-			"tado_binary_home_state": {
-				"name": "Modalità",
-				"description": "Indica se qualcuno è in casa",
-				"state_attributes": {
-					"devices_at_home": {
-						"name": "Dispositivi mobili in casa"
-					}
-				},
-				"state": {
-					"on": "A Casa",
-					"off": "Fuori Casa"
-				}
-			},
-			"tado_binary_open_windows": {
-				"name": "Finestre",
-				"description": "Indica se ci sono finestre aperte",
-				"state_attributes": {
-					"windows_open_zones": {
-						"name": "Zone con finestre aperte"
-					}
-				},
-				"state": {
-					"on": "Aperte",
-					"off": "Chiuse"
-				}
-			}
-		},
-		"switch": {
-			"tado_switch_assist": {
-				"name": "Abilita Assistente"
-			},
-			"tado_switch_georeferencing": {
-				"name": "Geolocalizzazione"
-			},
-			"tado_switch_auto_window_control": {
-				"name": "Controllo Finestre"
-			}
-		}
-	},
-	"selector": {
-		"scan_interval": {
-			"options": {
-				"15_seconds": "15 secondi",
-				"30_seconds": "30 secondi",
-				"1_minute": "1 minuto",
-				"2_minutes": "2 minuti",
-				"5_minutes": "5 minuti"
-			}
-		}
-	}
+        "error": {
+            "auth_not_started": "Autenticazione non avviata.",
+            "unknown": "Errore sconosciuto.",
+			"expired": "Il codice è scaduto. È stato generato un nuovo link, riprova subito.",
+            "activation_failed": "Autenticazione non riuscita. Riprova."
+        },
+        "abort": {
+            "reauth_successful": "Reautenticazione completata con successo. Puoi chiudere questa finestra."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Opzioni di Tado Assist",
+                "description": "Seleziona l'intervallo di aggiornamento.",
+                "data": {
+                    "scan_interval": "Intervallo di aggiornamento"
+                }
+            }
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "tado_binary_home_state": {
+                "name": "Modalità",
+                "description": "Indica se qualcuno è in casa",
+                "state_attributes": {
+                    "devices_at_home": {
+                        "name": "Dispositivi mobili in casa"
+                    }
+                },
+                "state": {
+                    "on": "A Casa",
+                    "off": "Fuori Casa"
+                }
+            },
+            "tado_binary_open_windows": {
+                "name": "Finestre",
+                "description": "Indica se ci sono finestre aperte",
+                "state_attributes": {
+                    "windows_open_zones": {
+                        "name": "Zone con finestre aperte"
+                    }
+                },
+                "state": {
+                    "on": "Aperte",
+                    "off": "Chiuse"
+                }
+            }
+        },
+        "switch": {
+            "tado_switch_assist": {
+                "name": "Abilita Assistente"
+            },
+            "tado_switch_georeferencing": {
+                "name": "Geolocalizzazione"
+            },
+            "tado_switch_auto_window_control": {
+                "name": "Controllo Finestre"
+            }
+        }
+    },
+    "selector": {
+        "scan_interval": {
+            "options": {
+                "15_seconds": "15 secondi",
+                "30_seconds": "30 secondi",
+                "1_minute": "1 minuto",
+                "2_minutes": "2 minuti",
+                "5_minutes": "5 minuti"
+            }
+        }
+    },
+    "issue": {
+        "auth_not_started": {
+            "title": "Autenticazione non avviata",
+            "description": "Completa l'autenticazione per {{ title }}. Vai alla configurazione dell'integrazione per procedere."
+        },
+        "auth_pending": {
+            "title": "Autenticazione in attesa",
+            "description": "Completa l'autenticazione in sospeso per {{ title }} nella UI Tado."
+        }
+    }
 }

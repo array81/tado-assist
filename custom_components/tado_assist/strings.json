@@ -1,81 +1,109 @@
-{	
-	"config": {
-		"step": {
-			"user": {
-				"title": "Tado Assist Settings",
-				"description": "Insert your Tado account login data and select the update interval.",
-				"data": {
-					"username": "Username",
-					"password": "Password",
-					"scan_interval": "Update interval"
-				}
-			}
+{
+    "config": {
+        "step": {
+            "activation": {
+                "title": "Authentication Required",
+                "description": "To complete authentication, follow the instructions at this URL: {auth_url}\nOnce finished, press SUBMIT to continue.",
+                "description_placeholders": {
+                    "auth_url": "URL to visit to complete authentication"
+                }
+            },
+            "reauth_activation": {
+                "title": "Authentication Required",
+                "description": "Authentication is required again. Follow the instructions at this URL: {auth_url}\nOnce completed, press SUBMIT to continue.",
+                "description_placeholders": {
+                    "auth_url": "URL to visit to complete authentication"
+                }
+            },
+            "config": {
+                "title": "Tado Assist Configuration",
+                "description": "Choose the data update interval."
+            }
+        },
+		"data": {
+		  "auth_submitted": "Autenticazione sul sito Tado completata"
 		},
-		"error": {
-			"cannot_connect": "Unable to connect to Tado. Please check your login data and try again."
-		}
-	},
-	"options": {
-		"step": {
-			"init": {
-				"title": "Opzioni di Tado Assist",
-				"description": "Select the update interval.",
-				"data": {
-					"scan_interval": "Update interval"
-				}
-			}
-		}
-	},
-	"entity": {
-		"binary_sensor": {
-			"tado_binary_home_state": {
-				"name": "Mode",
-				"description": "Geolocation mode activated",
+        "error": {
+            "auth_not_started": "Authentication not started.",
+            "unknown": "Unknown error.",
+            "expired": "The code has expired. A new link was generated, please try again now.",
+            "activation_failed": "Authentication failed. Please try again."
+        },
+        "abort": {
+            "reauth_successful": "Reauthentication completed successfully. You may now close this window."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Tado Assist Options",
+                "description": "Select the update interval.",
+                "data": {
+                    "scan_interval": "Update interval"
+                }
+            }
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "tado_binary_home_state": {
+                "name": "Mode",
+                "description": "Indicates whether someone is at home",
                 "state_attributes": {
                     "devices_at_home": {
-                        "name": "Mobile devices in the home"
+                        "name": "Mobile devices at home"
                     }
                 },
-				"state": {
-					"on": "Home",
-					"off": "Away"
-				}
-			},
-			"tado_binary_open_windows": {
-				"name": "Windows",
-				"description": "Presence of open windows in the house",
+                "state": {
+                    "on": "At Home",
+                    "off": "Away"
+                }
+            },
+            "tado_binary_open_windows": {
+                "name": "Windows",
+                "description": "Indicates if there are open windows",
                 "state_attributes": {
                     "windows_open_zones": {
                         "name": "Zones with open windows"
                     }
                 },
-				"state": {
-					"on": "Open",
-					"off": "Close"
-				}
-			}
-		},
-		"switch": {
-			"tado_switch_assist": {
-				"name": "Enable Assist"
-			},
-			"tado_switch_georeferencing": {
-				"name": "Georeferencing"
-			},
-			"tado_switch_auto_window_control": {
-				"name": "Window Control"
-			}
-		}
-	},
-	"selector": {
-		"scan_interval": {
-			"options": {
-				"15_seconds": "15 seconds",
-				"30_seconds": "30 seconds",
-				"1_minute": "1 minute",
-				"2_minutes": "2 minutes",
-				"5_minutes": "5 minutes"
-			}
-		}
-	}
+                "state": {
+                    "on": "Open",
+                    "off": "Closed"
+                }
+            }
+        },
+        "switch": {
+            "tado_switch_assist": {
+                "name": "Enable Assistant"
+            },
+            "tado_switch_georeferencing": {
+                "name": "Geolocation"
+            },
+            "tado_switch_auto_window_control": {
+                "name": "Window Control"
+            }
+        }
+    },
+    "selector": {
+        "scan_interval": {
+            "options": {
+                "15_seconds": "15 seconds",
+                "30_seconds": "30 seconds",
+                "1_minute": "1 minute",
+                "2_minutes": "2 minutes",
+                "5_minutes": "5 minutes"
+            }
+        }
+    },
+    "issue": {
+        "auth_not_started": {
+            "title": "Authentication Not Started",
+            "description": "Complete authentication for {{ title }}. Go to the integration configuration to proceed."
+        },
+        "auth_pending": {
+            "title": "Authentication Pending",
+            "description": "Complete the pending authentication for {{ title }} in the Tado UI."
+        }
+    }
 }

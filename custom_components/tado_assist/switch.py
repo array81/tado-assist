@@ -99,10 +99,10 @@ class TadoGeoreferencingSwitch(TadoBaseSwitch):
             devices_at_home = self.coordinator.data.get("mobile_devices", 0)
             if home_state.get("presence") == "HOME" and devices_at_home == 0:
                 _LOGGER.info("No mobile devices at home, setting AWAY mode...")
-                await self.hass.async_add_executor_job(self.tado.set_away)
+                await self.tado.set_away()  # ✅ Metodo async ora
             elif home_state.get("presence") == "AWAY" and devices_at_home > 0:
                 _LOGGER.info("Mobile devices detected at home, setting HOME mode...")
-                await self.hass.async_add_executor_job(self.tado.set_home)
+                await self.tado.set_home()  # ✅ Metodo async ora
 
 class TadoWindowControlSwitch(TadoBaseSwitch):
     # Switch to enable or disable automatic window control
@@ -129,4 +129,5 @@ class TadoWindowControlSwitch(TadoBaseSwitch):
             open_window_zone_ids = self.coordinator.data.get("open_window_zone_ids", [])
             for zone_id in open_window_zone_ids:
                 _LOGGER.info("Activating temporary heating suspension for zone %s", zone_id)
-                await self.hass.async_add_executor_job(self.tado.set_open_window, zone_id)
+                await self.tado.set_open_window(zone_id)  # ✅ Metodo async ora
+

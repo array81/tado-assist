@@ -1,104 +1,139 @@
-"""""Tado Assist Integration."""
+"""Tado Assist Integration."""
 
-import asyncio
 import logging
 from datetime import timedelta
+
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.issue_registry import async_create_issue, async_delete_issue, IssueSeverity
+
 from .switch import TadoGeoreferencingSwitch, TadoWindowControlSwitch
 from .const import DOMAIN
 from .tado_api import TadoAPI
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tado Assist from a config entry."""
-    
-    # Ensure the integration has a storage dictionary in hass.data
-    hass.data.setdefault(DOMAIN, {})
 
-    # ✅ Set default values to prevent key errors
+    hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN].setdefault("tado_assist_status", True)
     hass.data[DOMAIN].setdefault("tado_georeferencing_status", False)
     hass.data[DOMAIN].setdefault("tado_window_control_status", False)
 
-    # Retrieve credentials and scan interval from the config entry
-    username = entry.data["username"]
-    password = entry.data["password"]
-    scan_interval = timedelta(seconds=entry.data.get("scan_interval", 15))  # Default: 15 seconds
+    scan_interval = timedelta(seconds=entry.data.get("scan_interval", 15))
+    refresh_token = entry.data.get("refresh_token")
 
-    # Initialize Tado API client
-    tado = TadoAPI(hass, username, password)
-    await tado.async_login()  # Perform asynchronous login
+    _LOGGER.info("Caricamento Tado Assist con refresh_token: %s", refresh_token)
 
-    # Store the Tado API instance for global access
+    tado = TadoAPI(hass, entry, refresh_token=refresh_token)
+
+    try:
+        status_result = await tado.async_initialize()
+    except ConfigEntryAuthFailed as err:
+        _LOGGER.warning("TadoAPI: authentication failed, triggering reauth.")
+        raise ConfigEntryAuthFailed("Autenticazione non riuscita, reauth necessaria.") from err
+
+    status = status_result.get("status")
+    if not status:
+        _LOGGER.error("Tado authentication status is missing.")
+        return False
+
+    new_token = tado.get_refresh_token()
+    if new_token and new_token != refresh_token:
+        _LOGGER.info("New refresh_token obtained, updating config_entry.")
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, "refresh_token": new_token},
+        )
+
+    if status == "NOT_STARTED":
+        _LOGGER.error(
+            "Tado authentication flow has not started. Please reconfigure the integration from the Home Assistant UI."
+        )
+        raise ConfigEntryAuthFailed("Authentication not started.")
+
+    elif status == "PENDING":
+        _LOGGER.warning(
+            "Tado authentication is still pending. Complete the authentication via the provided URL and device code."
+        )
+        raise ConfigEntryAuthFailed("Authentication pending.")
+
+    elif status != "COMPLETED":
+        _LOGGER.error(f"Tado returned unexpected authentication status: {status}")
+        return False
+
     hass.data[DOMAIN]["tado"] = tado
 
     async def async_update_data():
-        """Update Tado data (home status, mobile devices, open windows)."""
-        
-        # Skip update if Tado Assist is disabled
+        """Fetch the latest data from Tado servers."""
+
         if not hass.data[DOMAIN]["tado_assist_status"]:
-            _LOGGER.info("Tado Assist is deactivated, no update performed.")
+            _LOGGER.info("Tado Assist is disabled, skipping data update.")
             return hass.data[DOMAIN].get("last_data", {})
 
-        _LOGGER.info("Updating data from Tado servers...")
+        _LOGGER.debug("Fetching data from Tado...")
 
         try:
-            # Fetch data from Tado API using synchronous calls wrapped in async
-            home_state = await hass.async_add_executor_job(tado.get_home_state) or {}
-            mobile_devices = await hass.async_add_executor_job(tado.get_mobile_devices) or 0
-            open_window_zones = await hass.async_add_executor_job(tado.get_open_window_detected) or []
+            home_state = await tado.get_home_state() or {}
+            mobile_devices = await tado.get_mobile_devices() or 0
+            open_window_zones = await tado.get_open_window_detected() or []
 
-            # Extract open window zone IDs and names
             open_window_zone_ids = [zone["id"] for zone in open_window_zones]
             open_window_zone_names = [zone["name"] for zone in open_window_zones]
         except Exception as e:
-            _LOGGER.error("Error updating Tado data: %s", e)
+            _LOGGER.error("Failed to fetch data from Tado: %s", e)
             return hass.data[DOMAIN].get("last_data", {})
 
-        _LOGGER.debug(open_window_zone_ids)
-        _LOGGER.debug(open_window_zone_names)
+        tado_georeferencing_status = any(
+            isinstance(entity, TadoGeoreferencingSwitch) and entity.is_on
+            for entity in hass.data[DOMAIN].get("switch_entities", [])
+        )
 
-        # Determine the status of Tado switches
-        tado_georeferencing_status = False
-        for entity in hass.data[DOMAIN].get("switch_entities", []):
-            if isinstance(entity, TadoGeoreferencingSwitch) and entity.is_on:
-                tado_georeferencing_status = True
-                
-        window_control_switch = False
-        for entity in hass.data[DOMAIN].get("switch_entities", []):
-            if isinstance(entity, TadoWindowControlSwitch) and entity.is_on:
-                window_control_switch = True
-                
-        # Save the new data state
+        tado_window_control_status = any(
+            isinstance(entity, TadoWindowControlSwitch) and entity.is_on
+            for entity in hass.data[DOMAIN].get("switch_entities", [])
+        )
+
         new_data = {
             "home_state": home_state,
             "mobile_devices": mobile_devices,
             "open_window_zone_ids": open_window_zone_ids,
             "open_window_zone_names": open_window_zone_names,
             "tado_georeferencing_status": tado_georeferencing_status,
-            "tado_window_control_status": window_control_switch
+            "tado_window_control_status": tado_window_control_status,
         }
+
         hass.data[DOMAIN]["last_data"] = new_data
 
-        # If the geofencing switch is enabled, check and update home/away status
         if new_data["tado_georeferencing_status"]:
             for entity in hass.data[DOMAIN].get("switch_entities", []):
                 if isinstance(entity, TadoGeoreferencingSwitch):
                     await entity.async_check_and_set_home_or_away()
 
-        # If window control is enabled, check and pause thermostat if needed
         if new_data["tado_window_control_status"]:
-            switch_entities = hass.data[DOMAIN].get("switch_entities", [])
-            for entity in switch_entities:
+            for entity in hass.data[DOMAIN].get("switch_entities", []):
                 if isinstance(entity, TadoWindowControlSwitch):
                     await entity.async_check_and_pause_thermostat()
 
+        # 🔁 Salva refresh_token aggiornato
+        try:
+            status = await hass.async_add_executor_job(tado._tado.device_activation_status)
+            if status == "COMPLETED":
+                new_token = tado.get_refresh_token()
+                if new_token and new_token != entry.data.get("refresh_token"):
+                    _LOGGER.info("New refresh token detected during update, saving.")
+                    hass.config_entries.async_update_entry(
+                        entry, data={**entry.data, "refresh_token": new_token}
+                    )
+        except Exception as e:
+            _LOGGER.error("Error saving updated refresh token: %s", e)
+
         return new_data
 
-    # Create a DataUpdateCoordinator for scheduled updates
     coordinator = DataUpdateCoordinator(
         hass,
         _LOGGER,
@@ -107,27 +142,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         update_interval=scan_interval,
     )
 
-    # Store the coordinator for this entry
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    # Perform the first update immediately
     await coordinator.async_config_entry_first_refresh()
-
-    # Load necessary platforms (binary_sensor and switch)
     await hass.config_entries.async_forward_entry_setups(entry, ["binary_sensor", "switch"])
 
-    _LOGGER.info("Tado Assist successfully configured!")
+    async_delete_issue(hass, DOMAIN, issue_id="auth_not_started")
+    async_delete_issue(hass, DOMAIN, issue_id="auth_pending")
 
+    _LOGGER.info("Tado Assist integration set up successfully.")
     return True
 
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Handle unloading of a config entry."""
-    
-    # Unload associated platforms
+    """Unload a Tado Assist config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["binary_sensor", "switch"])
-    
-    # If unloading was successful, remove entry from hass.data
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
-    
     return unload_ok
