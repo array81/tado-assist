@@ -1,6 +1,3 @@
-> ⚠️ **Attention**
-> Tado has changed the authentication mode to its APIs, this integration (as well as the official Tado one) cannot work at this time. It is necessary that the PyTado library used to access the APIs is updated in Home Assistant (probably with HA 2024.4). As soon as possible I will try to update. More info [here](https://github.com/home-assistant/core/issues/141089).
-
 # Tado Assist - Home Assistant Integration
 
 ![Tado Assist](https://img.shields.io/badge/Tado-Integration-blue.svg)
@@ -17,6 +14,7 @@ The integration relies on the PyTado library, which is automatically installed a
 - **Home & Away Modes**: Get your home to "Away" or "Home" mode with ease.
 - **Open Window Detection**: Get alerts when a window is detected as open.
 - **Customizable Scan Interval**: Choose how frequently the system checks for updates.
+- **HA repair**: Support repair function in case of re-authentication.
 - **Data Logging & Debugging**: Includes logging support for easy debugging.
 
 ## 🖼 Screenshots
@@ -57,6 +55,10 @@ This project is licensed under the [MIT License](LICENSE).
 ## 📌 Changelog
 Stay up to date with the latest changes and improvements:
 
+### v1.1.0 - Initial Release
+- New authentication system for TADO servers;
+- Support for HA repair function;
+  
 ### v1.0.0 - Initial Release
 - First public version.
 
