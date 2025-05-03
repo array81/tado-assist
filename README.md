@@ -1,3 +1,6 @@
+> ⚠️ **Attention**
+> Tado has changed the authentication mode to its APIs, this integration (as well as the official Tado one) cannot work at this time. It is necessary that the PyTado library used to access the APIs is updated in Home Assistant (probably with HA 2024.4). As soon as possible I will try to update. More info [here](https://github.com/home-assistant/core/issues/141089).
+
 # Tado Assist - Home Assistant Integration
 
 ![Tado Assist](https://img.shields.io/badge/Tado-Integration-blue.svg)
