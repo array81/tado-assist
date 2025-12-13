@@ -57,12 +57,12 @@ This project is licensed under the [MIT License](LICENSE).
 ## 📌 Changelog
 Stay up to date with the latest changes and improvements:
 
-### v1.2.0 - Initial Release
+### v1.2.0
 - Rewritten authentication procedure;
 - Added new switch to manually change HOME and AWAY status;
 - Bugs fix;
 
-### v1.1.0 - Initial Release
+### v1.1.0
 - New authentication system for TADO servers;
 - Support for HA repair function;
   
