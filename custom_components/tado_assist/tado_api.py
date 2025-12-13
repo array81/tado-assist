@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from homeassistant.core import HomeAssistant
 from PyTado.interface import Tado
 
@@ -12,7 +13,21 @@ class TadoAPI:
         self._tado = None
         self.auth_url = None
         self.refresh_token = refresh_token
+        # Lock per gestire la concorrenza ed evitare la rotazione multipla del token
+        self._lock = asyncio.Lock()
         _LOGGER.info("TadoAPI init - Provided refresh_token: %s", self.refresh_token)
+
+    async def _safe_api_call(self, func, *args):
+        """Esegue una chiamata API in modo thread-safe gestendo il token."""
+        async with self._lock:
+            try:
+                result = await self.hass.async_add_executor_job(func, *args)
+                # Controlla il token immediatamente dopo l'operazione, all'interno del lock
+                await self.check_and_update_token()
+                return result
+            except Exception as e:
+                _LOGGER.error("TadoAPI - Error during API call: %s", e)
+                raise e
 
     async def async_initialize(self, force_new=False):
         """Inizializza il client Tado e verifica lo stato di autenticazione."""
@@ -25,6 +40,7 @@ class TadoAPI:
                     lambda: Tado(saved_refresh_token=self.refresh_token)
                 )
 
+            # Questa chiamata avviene in setup, il lock è meno critico ma male non fa
             status = await self.hass.async_add_executor_job(self._tado.device_activation_status)
             _LOGGER.info("TadoAPI - Activation status: %s", status)
 
@@ -32,6 +48,7 @@ class TadoAPI:
                 self.auth_url = await self.hass.async_add_executor_job(self._tado.device_verification_url)
                 _LOGGER.info("TadoAPI - Auth URL: %s", self.auth_url)
 
+            # Qui non usiamo il lock perché siamo in fase di init/config flow
             await self.check_and_update_token()
 
             return {
@@ -52,12 +69,21 @@ class TadoAPI:
     async def check_and_update_token(self):
         """Controlla se il token della libreria è cambiato e lo salva, se necessario."""
         try:
+            if not self._tado:
+                return
+
             current_token = await self.hass.async_add_executor_job(self._tado.get_refresh_token)
             if current_token and current_token != self.refresh_token:
                 _LOGGER.info("TadoAPI - Token changed. Updating refresh_token.")
                 self.refresh_token = current_token
-                data = {**self.config_entry.data, "refresh_token": current_token}
-                self.hass.config_entries.async_update_entry(self.config_entry, data=data)
+                
+                # FIX: Verifica che config_entry sia una istanza valida e non il modulo config_entries
+                if hasattr(self.config_entry, "entry_id") and hasattr(self.config_entry, "data"):
+                    data = {**self.config_entry.data, "refresh_token": current_token}
+                    self.hass.config_entries.async_update_entry(self.config_entry, data=data)
+                else:
+                    _LOGGER.debug("TadoAPI - Config entry not yet persistent, token updated in memory only.")
+                    
         except Exception as e:
             _LOGGER.warning("TadoAPI - Failed to check/update token: %s", e)
 
@@ -78,11 +104,9 @@ class TadoAPI:
             _LOGGER.error("TadoAPI - Not authenticated")
             return None
         try:
-            state = await self.hass.async_add_executor_job(self._tado.get_home_state)
-            await self.check_and_update_token()
-            return state
-        except Exception as e:
-            _LOGGER.error("TadoAPI - Error in get_home_state: %s", e)
+            # Usa _safe_api_call
+            return await self._safe_api_call(self._tado.get_home_state)
+        except Exception:
             return None
 
     async def get_mobile_devices(self):
@@ -90,16 +114,18 @@ class TadoAPI:
             _LOGGER.error("TadoAPI - Not authenticated")
             return None
         try:
-            devices = await self.hass.async_add_executor_job(self._tado.get_mobile_devices)
-            count = sum(
-                1 for d in devices
-                if d.get("settings", {}).get("geoTrackingEnabled", False)
-                and d.get("location", {}).get("atHome")
-            )
-            await self.check_and_update_token()
-            return count
-        except Exception as e:
-            _LOGGER.error("TadoAPI - Error in get_mobile_devices: %s", e)
+            # Funzione helper interna per eseguire la logica nel thread executor
+            def _fetch_devices():
+                devices = self._tado.get_mobile_devices()
+                return sum(
+                    1 for d in devices
+                    if d.get("settings", {}).get("geoTrackingEnabled", False)
+                    and d.get("location", {}).get("atHome")
+                )
+            
+            # Usa _safe_api_call
+            return await self._safe_api_call(_fetch_devices)
+        except Exception:
             return None
 
     async def get_open_window_detected(self):
@@ -107,43 +133,41 @@ class TadoAPI:
             _LOGGER.error("TadoAPI - Not authenticated")
             return []
         try:
-            zones = await self.hass.async_add_executor_job(self._tado.get_zones)
-            open_windows = []
-            for zone in zones:
-                detection = await self.hass.async_add_executor_job(
-                    self._tado.get_open_window_detected, zone["id"]
-                )
-                if detection.get("openWindowDetected"):
-                    open_windows.append({"id": zone["id"], "name": zone["name"]})
-            await self.check_and_update_token()
-            return open_windows
-        except Exception as e:
-            _LOGGER.error("TadoAPI - Error in get_open_window_detected: %s", e)
+            # Funzione helper per la logica complessa
+            def _fetch_windows():
+                zones = self._tado.get_zones()
+                open_windows_list = []
+                for zone in zones:
+                    detection = self._tado.get_open_window_detected(zone["id"])
+                    if detection.get("openWindowDetected"):
+                        open_windows_list.append({"id": zone["id"], "name": zone["name"]})
+                return open_windows_list
+
+            # Usa _safe_api_call
+            return await self._safe_api_call(_fetch_windows)
+        except Exception:
             return []
 
     async def set_home(self):
         if self._is_authenticated():
             try:
-                await self.hass.async_add_executor_job(self._tado.set_home)
+                await self._safe_api_call(self._tado.set_home)
                 _LOGGER.info("TadoAPI - Home mode set")
-                await self.check_and_update_token()
-            except Exception as e:
-                _LOGGER.error("TadoAPI - Error in set_home: %s", e)
+            except Exception:
+                pass
 
     async def set_away(self):
         if self._is_authenticated():
             try:
-                await self.hass.async_add_executor_job(self._tado.set_away)
+                await self._safe_api_call(self._tado.set_away)
                 _LOGGER.info("TadoAPI - Away mode set")
-                await self.check_and_update_token()
-            except Exception as e:
-                _LOGGER.error("TadoAPI - Error in set_away: %s", e)
+            except Exception:
+                pass
 
     async def set_open_window(self, zone_id):
         if self._is_authenticated():
             try:
-                await self.hass.async_add_executor_job(self._tado.set_open_window, zone_id)
+                await self._safe_api_call(self._tado.set_open_window, zone_id)
                 _LOGGER.info("TadoAPI - Open window mode enabled for zone %s", zone_id)
-                await self.check_and_update_token()
-            except Exception as e:
-                _LOGGER.error("TadoAPI - Error in set_open_window: %s", e)
+            except Exception:
+                pass

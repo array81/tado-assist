@@ -1,270 +1,176 @@
 import logging
 import voluptuous as vol
-import asyncio  # Assicurati che sia importato in alto
-
 from homeassistant import config_entries
 from homeassistant.core import callback
-from homeassistant.const import CONF_SCAN_INTERVAL
+from homeassistant.const import CONF_SCAN_INTERVAL, UnitOfTime
 from homeassistant.helpers import config_entry_flow
 from homeassistant.helpers.selector import (
-    SelectSelector,
-    SelectSelectorConfig,
-    SelectSelectorMode,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
 )
 
-from .const import DOMAIN
+from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, MIN_SCAN_INTERVAL
 from .tado_api import TadoAPI
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_INTERVAL_OPTIONS = {
-    "15_seconds": 15,
-    "30_seconds": 30,
-    "1_minute": 60,
-    "2_minutes": 120,
-    "5_minutes": 300,
-}
+# --- 1. OPTIONS FLOW HANDLER ---
+class TadoAssistOptionsFlowHandler(config_entries.OptionsFlow):
+    """
+    Gestisce le opzioni.
+    """
+
+    async def async_step_init(self, user_input=None):
+        """Gestisce il modulo delle opzioni."""
+        
+        # FIX: Usiamo la nostra variabile 'saved_config_entry' invece di 'config_entry'
+        # per evitare conflitti con le proprietà di sola lettura di Home Assistant.
+        entry = getattr(self, "saved_config_entry", None)
+        
+        # Recupero sicuro del valore attuale
+        current_interval = DEFAULT_SCAN_INTERVAL
+        if entry and hasattr(entry, "data"):
+            current_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        
+        # Se l'utente ha inviato il modulo con nuovi dati
+        if user_input is not None:
+            if entry:
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    data={**entry.data, CONF_SCAN_INTERVAL: user_input["scan_interval"]}
+                )
+            return self.async_create_entry(title="", data=user_input)
+
+        # Mostra il modulo
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({
+                vol.Required("scan_interval", default=int(current_interval)): NumberSelector(
+                    NumberSelectorConfig(
+                        min=MIN_SCAN_INTERVAL,
+                        max=3600,
+                        step=1,
+                        mode=NumberSelectorMode.BOX,
+                        unit_of_measurement=UnitOfTime.SECONDS
+                    )
+                )
+            })
+        )
 
 
+# --- 2. CONFIG FLOW PRINCIPALE ---
 class TadoAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """
+        Crea il flusso opzioni.
+        """
+        # Creiamo l'istanza
+        flow = TadoAssistOptionsFlowHandler()
+        
+        # FIX CRUCIALE: Salviamo l'entry in una variabile con nome DIVERSO
+        # Non usare 'flow.config_entry' perché è protetta (read-only).
+        flow.saved_config_entry = config_entry
+        
+        return flow
 
     def __init__(self):
         self.tado = None
         self._auth_url = None
         self._reauth_entry = None
-        self.scan_interval = SCAN_INTERVAL_OPTIONS["15_seconds"]
 
     async def async_step_user(self, user_input=None):
-        _LOGGER.info("async_step_user called. user_input: %s", user_input)
         errors = {}
-
         if not self.tado:
             self.tado = TadoAPI(self.hass, config_entries)
 
         try:
             status_result = await self.tado.async_initialize(force_new=False)
-            status = status_result["status"]
+            status = status_result.get("status")
             self._auth_url = status_result.get("auth_url")
-
-            _LOGGER.info("Tado status: %s, auth_url: %s", status_result, self._auth_url)
 
             if status in ["NOT_STARTED", "PENDING"]:
                 return await self.async_step_activation()
             elif status == "COMPLETED":
                 return await self.async_step_config()
-
-        except Exception as e:
-            _LOGGER.exception("Errore durante lo step user: %s", e)
+        except Exception:
             errors["base"] = "unknown"
 
-        return self.async_show_form(step_id="user", data_schema=vol.Schema({}), errors=errors)
+        return self.async_show_form(step_id="user", errors=errors)
 
     async def async_step_activation(self, user_input=None):
-        _LOGGER.info("Entrato in async_step_activation con user_input=%s", user_input)
-
-        try:
-            if user_input is not None:
-                _LOGGER.info("Tentativo di attivazione in corso...")
+        errors = {}
+        if user_input is not None:
+            try:
                 success = await self.tado.async_activate_device()
-
                 if success:
-                    _LOGGER.info("Attivazione completata con successo.")
-                    return await self._handle_post_authentication()
+                    return await self._handle_post_auth()
+                errors["base"] = "activation_failed"
+            except Exception:
+                errors["base"] = "unknown"
 
-            # Controllo stato attuale
-            status_result = await self.tado.async_initialize(force_new=False)
-            status = status_result["status"]
+        if not self._auth_url:
+             res = await self.tado.async_initialize(force_new=False)
+             self._auth_url = res.get("auth_url")
 
-            if status == "COMPLETED":
-                _LOGGER.info("Token attivo trovato, si passa alla configurazione.")
-                return await self._handle_post_authentication()
-
-            # Mostra il link per completare l'autenticazione
-            self._auth_url = status_result.get("auth_url")
-            _LOGGER.info("Mostro il form con auth_url: %s", self._auth_url)
-
-            return self.async_show_form(
-                step_id="activation",
-                data_schema=vol.Schema({}),
-                description_placeholders={"auth_url": self._auth_url},
-            )
-
-        except Exception as e:
-            _LOGGER.exception("Errore durante lo step activation: %s", e)
-            return self.async_show_form(
-                step_id="activation",
-                data_schema=vol.Schema({}),
-                errors={"base": "activation_failed"},
-            )
-
-    async def _handle_post_authentication(self):
-        """Gestisce l'esito positivo di un'autenticazione o ri-autenticazione."""
-        if self._reauth_entry:
-            _LOGGER.info("Aggiornamento entry esistente con nuovo refresh token.")
-            return await config_entry_flow.async_update_reload_and_abort(
-                self.hass,
-                self._reauth_entry,
-                data={
-                    CONF_SCAN_INTERVAL: self._reauth_entry.data.get(CONF_SCAN_INTERVAL, SCAN_INTERVAL_OPTIONS["15_seconds"]),
-                    "refresh_token": self.tado.get_refresh_token(),
-                },
-                reason="reauth_successful"
-            )
-        else:
-            _LOGGER.info("Autenticazione completata, passando alla configurazione.")
-            return await self.async_step_config()
-
-    async def async_step_config(self, user_input=None):
-        """Configurazione finale: scelta dello scan_interval."""
-        _LOGGER.info("Entrato in async_step_config con user_input=%s", user_input)
-
-        return self.async_create_entry(
-            title="Tado Assist",
-            data={
-                CONF_SCAN_INTERVAL: self.scan_interval,
-                "refresh_token": self.tado.get_refresh_token(),
-            },
+        return self.async_show_form(
+            step_id="activation",
+            description_placeholders={"auth_url": self._auth_url},
+            errors=errors
         )
 
-    def _get_data_schema(self, user_input=None):
-        return vol.Schema({
-            vol.Required(
-                "scan_interval",
-                default="15_seconds" if not user_input else user_input.get("scan_interval", "15_seconds")
-            ): SelectSelector(
-                SelectSelectorConfig(
-                    options=list(SCAN_INTERVAL_OPTIONS.keys()),
-                    mode=SelectSelectorMode.DROPDOWN,
-                    translation_key="scan_interval"
-                )
-            )
-        })
-
-    async def async_step_reauth(self, entry_data):
-        """Gestisce la ri-autenticazione da una configurazione esistente."""
-        _LOGGER.info("Esecuzione async_step_reauth con entry_data: %s", entry_data)
-
-        self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        self.tado = TadoAPI(self.hass, config_entries, refresh_token=entry_data.get("refresh_token"))
-
-        # 🔍 Primo tentativo con token esistente
-        status_result = await self.tado.async_initialize(force_new=False)
-        status = status_result.get("status")
-
-        if status == "COMPLETED":
-            _LOGGER.info("Token esistente ancora valido, aggiorno l'entry.")
-            new_token = self.tado.get_refresh_token()
+    async def _handle_post_auth(self):
+        if self._reauth_entry:
             self.hass.config_entries.async_update_entry(
                 self._reauth_entry,
-                data={**self._reauth_entry.data, "refresh_token": new_token},
+                data={**self._reauth_entry.data, "refresh_token": self.tado.get_refresh_token()}
             )
-            await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
+            self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
             return self.async_abort(reason="reauth_successful")
+        return await self.async_step_config()
 
-        if status == "PENDING":
-            _LOGGER.info("Token restituisce PENDING, provo un retry rapido prima di forzare nuova autenticazione.")
-            await asyncio.sleep(2)  # debounce rapido di 2 secondi
-            status_result = await self.tado.async_initialize(force_new=False)
-            status = status_result.get("status")
+    async def async_step_config(self, user_input=None):
+        if user_input is not None:
+            return self.async_create_entry(
+                title="Tado Assist",
+                data={
+                    CONF_SCAN_INTERVAL: user_input["scan_interval"],
+                    "refresh_token": self.tado.get_refresh_token(),
+                }
+            )
 
-            if status == "COMPLETED":
-                _LOGGER.info("Secondo tentativo riuscito, token accettato.")
-                new_token = self.tado.get_refresh_token()
-                self.hass.config_entries.async_update_entry(
-                    self._reauth_entry,
-                    data={**self._reauth_entry.data, "refresh_token": new_token},
+        return self.async_show_form(
+            step_id="config",
+            data_schema=vol.Schema({
+                vol.Required("scan_interval", default=DEFAULT_SCAN_INTERVAL): NumberSelector(
+                    NumberSelectorConfig(min=MIN_SCAN_INTERVAL, max=3600, mode=NumberSelectorMode.BOX)
                 )
-                await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
-                return self.async_abort(reason="reauth_successful")
+            })
+        )
 
-        # 😬 A questo punto, forziamo davvero il re-auth
-        _LOGGER.info("Token non valido, forzo una nuova autenticazione.")
-        status_result = await self.tado.async_initialize(force_new=True)
-        self._auth_url = status_result.get("auth_url")
-
+    async def async_step_reauth(self, entry_data):
+        self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        self.tado = TadoAPI(self.hass, config_entries, refresh_token=entry_data.get("refresh_token"))
+        await self.tado.async_initialize(force_new=False)
         return await self.async_step_reauth_activation()
 
     async def async_step_reauth_activation(self, user_input=None):
         errors = {}
-
-        try:
-            if not user_input:
-                _LOGGER.info("Ricarico auth_url per evitare scadenza.")
-                status_result = await self.tado.async_initialize(force_new=True)
-                self._auth_url = status_result.get("auth_url")
-
-            else:
-                _LOGGER.info("Tentativo di attivazione in corso durante la reauth...")
-
-                try:
-                    success = await self.tado.async_activate_device()
-                    _LOGGER.info("Risultato attivazione: %s", success)
-
-                    # 🔁 AGGIUNGI QUESTO CONTROLLO SUBITO DOPO
-                    status_result = await self.tado.async_initialize(force_new=False)
-                    status = status_result.get("status")
-                    _LOGGER.info("Stato post-attivazione: %s", status_result)
-
-                    if status == "COMPLETED":
-                        new_token = self.tado.get_refresh_token()
-                        self.hass.config_entries.async_update_entry(
-                            self._reauth_entry,
-                            data={**self._reauth_entry.data, "refresh_token": new_token},
-                        )
-                        await self.hass.config_entries.async_reload(self._reauth_entry.entry_id)
-                        return self.async_abort(reason="reauth_successful")
-
-                    self._auth_url = status_result.get("auth_url")
-                    errors["base"] = "activation_failed"
-
-                except Exception as e:
-                    if "too long" in str(e).lower():
-                        _LOGGER.warning("Codice scaduto. Genero nuovo device code.")
-                        status_result = await self.tado.async_initialize(force_new=True)
-                        self._auth_url = status_result.get("auth_url")
-                        errors["base"] = "expired"
-                        return self.async_show_form(
-                            step_id="reauth_activation",
-                            data_schema=vol.Schema({}),
-                            description_placeholders={"auth_url": self._auth_url},
-                            errors=errors,
-                        )
-                    raise
-
-        except Exception as e:
-            _LOGGER.exception("Errore durante la reauth_activation: %s", e)
+        if user_input is not None:
+            if await self.tado.async_activate_device():
+                return await self._handle_post_auth()
             errors["base"] = "activation_failed"
+
+        if not self._auth_url:
+            res = await self.tado.async_initialize(force_new=True)
+            self._auth_url = res.get("auth_url")
 
         return self.async_show_form(
             step_id="reauth_activation",
-            data_schema=vol.Schema({
-                vol.Required("auth_submitted", default=True): bool
-            }),
             description_placeholders={"auth_url": self._auth_url},
+            errors=errors
         )
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry):
-        return TadoAssistOptionsFlowHandler(config_entry)
-
-
-class TadoAssistOptionsFlowHandler(config_entries.OptionsFlow):
-    def __init__(self, config_entry):
-        self.config_entry = config_entry
-        self.scan_interval = config_entry.data.get(CONF_SCAN_INTERVAL, SCAN_INTERVAL_OPTIONS["15_seconds"])
-
-    async def async_step_init(self, user_input=None):
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-
-        return self.async_show_form(step_id="init", data_schema=vol.Schema({
-            vol.Required("scan_interval", default="15_seconds"): SelectSelector(
-                SelectSelectorConfig(
-                    options=list(SCAN_INTERVAL_OPTIONS.keys()),
-                    mode=SelectSelectorMode.DROPDOWN,
-                    translation_key="scan_interval"
-                )
-            )
-        }))

@@ -9,8 +9,8 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.issue_registry import async_create_issue, async_delete_issue, IssueSeverity
 
-from .switch import TadoGeoreferencingSwitch, TadoWindowControlSwitch
-from .const import DOMAIN
+from .switch import TadoGeoreferencingSwitch, TadoWindowControlSwitch, TadoAwaySwitch
+from .const import DOMAIN, DEFAULT_SCAN_INTERVAL
 from .tado_api import TadoAPI
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,7 +24,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN].setdefault("tado_georeferencing_status", False)
     hass.data[DOMAIN].setdefault("tado_window_control_status", False)
 
-    scan_interval = timedelta(seconds=entry.data.get("scan_interval", 15))
+    # MODIFICA: Usa DEFAULT_SCAN_INTERVAL importato (300s) come fallback
+    scan_interval = timedelta(seconds=entry.data.get("scan_interval", DEFAULT_SCAN_INTERVAL))
     refresh_token = entry.data.get("refresh_token")
 
     _LOGGER.info("Caricamento Tado Assist con refresh_token: %s", refresh_token)
@@ -78,13 +79,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.debug("Fetching data from Tado...")
 
         try:
+            # Le chiamate qui sono thread-safe grazie alle modifiche in tado_api.py
             home_state = await tado.get_home_state() or {}
             mobile_devices = await tado.get_mobile_devices() or 0
             open_window_zones = await tado.get_open_window_detected() or []
 
             open_window_zone_ids = [zone["id"] for zone in open_window_zones]
             open_window_zone_names = [zone["name"] for zone in open_window_zones]
+            
         except Exception as e:
+            # Controllo errori di autenticazione per scatenare reauth
+            error_str = str(e).lower()
+            if "401" in error_str or "invalid_grant" in error_str:
+                _LOGGER.warning("Token expired or invalid during update, triggering reauth.")
+                raise ConfigEntryAuthFailed from e
+            
             _LOGGER.error("Failed to fetch data from Tado: %s", e)
             return hass.data[DOMAIN].get("last_data", {})
 
@@ -118,19 +127,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for entity in hass.data[DOMAIN].get("switch_entities", []):
                 if isinstance(entity, TadoWindowControlSwitch):
                     await entity.async_check_and_pause_thermostat()
-
-        # 🔁 Salva refresh_token aggiornato
-        try:
-            status = await hass.async_add_executor_job(tado._tado.device_activation_status)
-            if status == "COMPLETED":
-                new_token = tado.get_refresh_token()
-                if new_token and new_token != entry.data.get("refresh_token"):
-                    _LOGGER.info("New refresh token detected during update, saving.")
-                    hass.config_entries.async_update_entry(
-                        entry, data={**entry.data, "refresh_token": new_token}
-                    )
-        except Exception as e:
-            _LOGGER.error("Error saving updated refresh token: %s", e)
 
         return new_data
 

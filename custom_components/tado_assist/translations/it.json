@@ -82,17 +82,9 @@
             },
             "tado_switch_auto_window_control": {
                 "name": "Controllo Finestre"
-            }
-        }
-    },
-    "selector": {
-        "scan_interval": {
-            "options": {
-                "15_seconds": "15 secondi",
-                "30_seconds": "30 secondi",
-                "1_minute": "1 minuto",
-                "2_minutes": "2 minuti",
-                "5_minutes": "5 minuti"
+            },
+            "tado_switch_away_control": {
+                "name": "Fuori casa"
             }
         }
     },

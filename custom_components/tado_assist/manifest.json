@@ -1,7 +1,7 @@
 {
   "domain": "tado_assist",
   "name": "Tado Assist",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "documentation": "https://github.com/array81/tado-assist",
   "dependencies": [],
   "codeowners": ["@array81"],

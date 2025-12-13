@@ -16,7 +16,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
     switches = [
         TadoEnabledAssistSwitch(hass, entry, coordinator),
         TadoGeoreferencingSwitch(hass, entry, coordinator, tado),
-        TadoWindowControlSwitch(hass, entry, coordinator, tado)
+        TadoWindowControlSwitch(hass, entry, coordinator, tado),
+        # ✅ NUOVO SWITCH AGGIUNTO QUI
+        TadoAwaySwitch(hass, entry, coordinator, tado)
     ]
 
     async_add_entities(switches, True)
@@ -65,10 +67,14 @@ class TadoEnabledAssistSwitch(TadoBaseSwitch):
 
     async def async_turn_on(self, **kwargs):
         self._attr_is_on = True
+        self.hass.data[DOMAIN]["tado_assist_status"] = True
         self.async_write_ha_state()
+        # Forza aggiornamento dati immediato
+        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
         self._attr_is_on = False
+        self.hass.data[DOMAIN]["tado_assist_status"] = False
         self.async_write_ha_state()
 
 class TadoGeoreferencingSwitch(TadoBaseSwitch):
@@ -83,13 +89,13 @@ class TadoGeoreferencingSwitch(TadoBaseSwitch):
 
     async def async_turn_on(self, **kwargs):
         self._attr_is_on = True
-        self.hass.data[DOMAIN]["last_data"]["tado_georeferencing_status"] = True
+        self.hass.data[DOMAIN]["tado_georeferencing_status"] = True
         self.async_write_ha_state()
         await self.async_check_and_set_home_or_away()
 
     async def async_turn_off(self, **kwargs):
         self._attr_is_on = False
-        self.hass.data[DOMAIN]["last_data"]["tado_georeferencing_status"] = False
+        self.hass.data[DOMAIN]["tado_georeferencing_status"] = False
         self.async_write_ha_state()
 
     async def async_check_and_set_home_or_away(self):
@@ -99,10 +105,10 @@ class TadoGeoreferencingSwitch(TadoBaseSwitch):
             devices_at_home = self.coordinator.data.get("mobile_devices", 0)
             if home_state.get("presence") == "HOME" and devices_at_home == 0:
                 _LOGGER.info("No mobile devices at home, setting AWAY mode...")
-                await self.tado.set_away()  # ✅ Metodo async ora
+                await self.tado.set_away() 
             elif home_state.get("presence") == "AWAY" and devices_at_home > 0:
                 _LOGGER.info("Mobile devices detected at home, setting HOME mode...")
-                await self.tado.set_home()  # ✅ Metodo async ora
+                await self.tado.set_home() 
 
 class TadoWindowControlSwitch(TadoBaseSwitch):
     # Switch to enable or disable automatic window control
@@ -116,11 +122,13 @@ class TadoWindowControlSwitch(TadoBaseSwitch):
 
     async def async_turn_on(self, **kwargs):
         self._attr_is_on = True
+        self.hass.data[DOMAIN]["tado_window_control_status"] = True
         self.async_write_ha_state()
         await self.async_check_and_pause_thermostat()
 
     async def async_turn_off(self, **kwargs):
         self._attr_is_on = False
+        self.hass.data[DOMAIN]["tado_window_control_status"] = False
         self.async_write_ha_state()
 
     async def async_check_and_pause_thermostat(self):
@@ -129,5 +137,50 @@ class TadoWindowControlSwitch(TadoBaseSwitch):
             open_window_zone_ids = self.coordinator.data.get("open_window_zone_ids", [])
             for zone_id in open_window_zone_ids:
                 _LOGGER.info("Activating temporary heating suspension for zone %s", zone_id)
-                await self.tado.set_open_window(zone_id)  # ✅ Metodo async ora
+                await self.tado.set_open_window(zone_id) 
 
+class TadoAwaySwitch(TadoBaseSwitch):
+    """
+    Switch manuale per forzare la modalità Home/Away.
+    ON = Forza AWAY (Assente)
+    OFF = Forza HOME (Presente)
+    Si aggiorna automaticamente quando il coordinator scarica nuovi dati da Tado.
+    """  
+    def __init__(self, hass, entry, coordinator, tado):
+        # Ricordati di aggiungere "tado_switch_away" nel tuo file strings.json
+        super().__init__(hass, entry, coordinator, "tado_switch_away_control", "away_switch_control")
+        self.tado = tado
+
+    @property
+    def is_on(self):
+        # ✅ QUESTA PARTE RENDE LO SWITCH AUTOMATICO
+        # Se abbiamo dati aggiornati dal server, usiamo quelli per decidere se lo switch è ON o OFF
+        if self.coordinator.data and "home_state" in self.coordinator.data:
+            home_state = self.coordinator.data.get("home_state", {})
+            presence = home_state.get("presence")
+            
+            if presence == "AWAY":
+                return True
+            elif presence == "HOME":
+                return False
+        
+        # Se non ci sono dati (es. appena avviato), usa lo stato salvato internamente
+        return self._attr_is_on
+
+    async def async_turn_on(self, **kwargs):
+        """Utente mette su ON -> Imposta AWAY."""
+        _LOGGER.info("Manually setting Tado to AWAY mode.")
+        await self.tado.set_away()
+        self._attr_is_on = True
+        self.async_write_ha_state()
+        # Richiede refresh immediato per allineare UI
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs):
+        """Utente mette su OFF -> Imposta HOME."""
+        _LOGGER.info("Manually setting Tado to HOME mode.")
+        await self.tado.set_home()
+        self._attr_is_on = False
+        self.async_write_ha_state()
+        # Richiede refresh immediato per allineare UI
+        await self.coordinator.async_request_refresh()

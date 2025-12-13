@@ -8,6 +8,8 @@
 This integration for **Home Assistant** allows you to use **Tado**'s API to create your own "Auto-Assist." It periodically communicates with Tado's servers to retrieve the home's status and can modify it based on user input.
 The integration relies on the PyTado library, which is automatically installed alongside it.
 
+**ATTENTION**: Tado recently limited the number of daily API requests to 20,000 for subscription users and **only 100** for non-subscribers.
+
 ## ✨ Features
 - **Automation**: Automates the change of operating mode (Home or Away) and the suspension of home heating.
 - **Mobile Device Tracking**: Detect mobile devices linked to Tado and their home presence.
@@ -54,6 +56,11 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## 📌 Changelog
 Stay up to date with the latest changes and improvements:
+
+### v1.2.0 - Initial Release
+- Rewritten authentication procedure;
+- Added new switch to manually change HOME and AWAY status;
+- Bugs fix;
 
 ### v1.1.0 - Initial Release
 - New authentication system for TADO servers;

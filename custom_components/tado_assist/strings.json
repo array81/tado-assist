@@ -82,17 +82,9 @@
             },
             "tado_switch_auto_window_control": {
                 "name": "Window Control"
-            }
-        }
-    },
-    "selector": {
-        "scan_interval": {
-            "options": {
-                "15_seconds": "15 seconds",
-                "30_seconds": "30 seconds",
-                "1_minute": "1 minute",
-                "2_minutes": "2 minutes",
-                "5_minutes": "5 minutes"
+            },
+            "tado_switch_away_control": {
+                "name": "Away"
             }
         }
     },
