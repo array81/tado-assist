@@ -39,6 +39,13 @@ Below are some preview images showcasing Tado Assist in action:
 3. Restart Home Assistant.
 4. Add the integration via **Settings** → **Devices & Services**.
 
+## 📚 Documentation
+Short description of the switch:
+- **Enable Assistant**: Enable automatic control of Tado servers via API.
+- **Geolocation**: Check in the Tado servers whether the mode is set to Home or Away and if necessary update the sensor with the correct value (only if Enable Assistant is enabled).
+- **Window Control**: Check Tado servers for zones with open windows and update the sensor with the correct value if necessary (only if Enable Assistant is enabled).
+- **Away**: If enabled, it sets the TADO servers to Away mode, otherwise to Home mode. NOTE: This does not require Enable Assistant to be enabled. If Enable Assistant is not enabled, it only makes one call per status change (limiting the number of calls to a minimum). If Enable Assistant is enabled, it is updated periodically..
+
 ## 🤝 Contributing
 We welcome contributions! Feel free to open issues, suggest features, or submit pull requests.
 - **Feature Requests**: Open an issue describing your idea.
