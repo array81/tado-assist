@@ -3,7 +3,6 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.const import CONF_SCAN_INTERVAL, UnitOfTime
-from homeassistant.helpers import config_entry_flow
 from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
@@ -15,25 +14,13 @@ from .tado_api import TadoAPI
 
 _LOGGER = logging.getLogger(__name__)
 
-# --- 1. OPTIONS FLOW HANDLER ---
 class TadoAssistOptionsFlowHandler(config_entries.OptionsFlow):
-    """
-    Gestisce le opzioni.
-    """
-
     async def async_step_init(self, user_input=None):
-        """Gestisce il modulo delle opzioni."""
-        
-        # FIX: Usiamo la nostra variabile 'saved_config_entry' invece di 'config_entry'
-        # per evitare conflitti con le proprietà di sola lettura di Home Assistant.
         entry = getattr(self, "saved_config_entry", None)
-        
-        # Recupero sicuro del valore attuale
         current_interval = DEFAULT_SCAN_INTERVAL
         if entry and hasattr(entry, "data"):
             current_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         
-        # Se l'utente ha inviato il modulo con nuovi dati
         if user_input is not None:
             if entry:
                 self.hass.config_entries.async_update_entry(
@@ -42,40 +29,26 @@ class TadoAssistOptionsFlowHandler(config_entries.OptionsFlow):
                 )
             return self.async_create_entry(title="", data=user_input)
 
-        # Mostra il modulo
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
                 vol.Required("scan_interval", default=int(current_interval)): NumberSelector(
                     NumberSelectorConfig(
-                        min=MIN_SCAN_INTERVAL,
-                        max=3600,
-                        step=1,
-                        mode=NumberSelectorMode.BOX,
-                        unit_of_measurement=UnitOfTime.SECONDS
+                        min=MIN_SCAN_INTERVAL, max=3600, step=1,
+                        mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfTime.SECONDS
                     )
                 )
             })
         )
 
-
-# --- 2. CONFIG FLOW PRINCIPALE ---
 class TadoAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        """
-        Crea il flusso opzioni.
-        """
-        # Creiamo l'istanza
         flow = TadoAssistOptionsFlowHandler()
-        
-        # FIX CRUCIALE: Salviamo l'entry in una variabile con nome DIVERSO
-        # Non usare 'flow.config_entry' perché è protetta (read-only).
         flow.saved_config_entry = config_entry
-        
         return flow
 
     def __init__(self):
@@ -86,14 +59,15 @@ class TadoAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
         if not self.tado:
-            self.tado = TadoAPI(self.hass, config_entries)
+            # FIX: Non passare il modulo 'config_entries', passa 'None' per entry nuova
+            self.tado = TadoAPI(self.hass, None)
 
         try:
             status_result = await self.tado.async_initialize(force_new=False)
             status = status_result.get("status")
             self._auth_url = status_result.get("auth_url")
 
-            if status in ["NOT_STARTED", "PENDING"]:
+            if status == "NOT_STARTED":
                 return await self.async_step_activation()
             elif status == "COMPLETED":
                 return await self.async_step_config()
@@ -154,8 +128,9 @@ class TadoAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth(self, entry_data):
         self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        self.tado = TadoAPI(self.hass, config_entries, refresh_token=entry_data.get("refresh_token"))
-        await self.tado.async_initialize(force_new=False)
+        self.tado = TadoAPI(self.hass, self._reauth_entry, refresh_token=entry_data.get("refresh_token"))
+        # Forziamo una nuova autenticazione
+        await self.tado.async_initialize(force_new=True)
         return await self.async_step_reauth_activation()
 
     async def async_step_reauth_activation(self, user_input=None):

@@ -1,10 +1,10 @@
 {
   "domain": "tado_assist",
   "name": "Tado Assist",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "documentation": "https://github.com/array81/tado-assist",
   "dependencies": [],
   "codeowners": ["@array81"],
   "config_flow": true,
-  "requirements": ["python-tado"]
+  "requirements": []
 }

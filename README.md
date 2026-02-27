@@ -64,6 +64,10 @@ This project is licensed under the [MIT License](LICENSE).
 ## 📌 Changelog
 Stay up to date with the latest changes and improvements:
 
+### v1.3.0
+- Added standalone Tado API Library;
+- Removed pyTado library dependency;
+
 ### v1.2.0
 - Rewritten authentication procedure;
 - Added new switch to manually change HOME and AWAY status;
