@@ -64,7 +64,7 @@ This project is licensed under the [MIT License](LICENSE).
 ## 📌 Changelog
 Stay up to date with the latest changes and improvements:
 
-### v1.3.1
+### v1.3.3
 - Fix get_mobile_devices function;
 
 ### v1.3.0
