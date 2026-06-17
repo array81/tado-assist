@@ -4,7 +4,7 @@ from typing import Optional
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import TADO_CLIENT_ID
+from .const import TADO_CLIENT_ID, CONF_API_URL, DEFAULT_API_URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,9 +27,13 @@ class TadoAPI:
         
         # Endpoints Tado CORRETTI
         self._oauth_url = "https://login.tado.com/oauth2"
-        self._api_url = "https://my.tado.com/api/v2"
         self._session = async_get_clientsession(self.hass)
         self._lock = asyncio.Lock()
+
+        # Imposta l'URL personalizzato o quello di default se non presente
+        self._api_url = DEFAULT_API_URL
+        if self.config_entry and self.config_entry.data:
+            self._api_url = self.config_entry.data.get(CONF_API_URL, DEFAULT_API_URL)
 
     async def async_initialize(self, force_new=False):
         """Inizializza l'API. Se force_new è True o il refresh_token fallisce, avvia un nuovo login."""
@@ -137,8 +141,8 @@ class TadoAPI:
                     new_data = {**self.config_entry.data, "refresh_token": self.refresh_token}
                     self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
 
-    async def _request(self, method: str, endpoint: str, json_data=None):
-        """Gestisce le chiamate API, rinnovando il token se riceve un 401."""
+    async def _request(self, method: str, endpoint: str, json_data=None, retries=2):
+        """Gestisce le chiamate API con rinnovo token e Auto-Retry in caso di Rate Limit (429)."""
         async with self._lock:
             if not self.access_token:
                 await self._refresh_access_token()
@@ -146,21 +150,34 @@ class TadoAPI:
             url = f"{self._api_url}{endpoint}"
             headers = {"Authorization": f"Bearer {self.access_token}"}
 
-            # Primo tentativo
-            async with self._session.request(method, url, headers=headers, json=json_data) as response:
-                if response.status == 401:
-                    _LOGGER.debug("Access token scaduto, tento il rinnovo...")
-                    # Fallito? Rinnova il token e riprova
-                    await self._refresh_access_token()
-                    headers["Authorization"] = f"Bearer {self.access_token}"
-                    async with self._session.request(method, url, headers=headers, json=json_data) as retry_resp:
-                        if retry_resp.status == 401:
-                            raise TadoAuthError("Non autorizzato anche dopo il refresh.")
-                        retry_resp.raise_for_status()
-                        return await retry_resp.json() if retry_resp.status != 204 else None
+            # Ciclo di tentativi (di default prova 3 volte: tentativo iniziale + 2 retries)
+            for attempt in range(retries + 1):
+                async with self._session.request(method, url, headers=headers, json=json_data) as response:
+                    
+                    # 1. Gestione Token Scaduto (401)
+                    if response.status == 401:
+                        if attempt < retries:
+                            _LOGGER.debug("Access token scaduto, tento il rinnovo (Tentativo %s)...", attempt + 1)
+                            await self._refresh_access_token()
+                            headers["Authorization"] = f"Bearer {self.access_token}"
+                            continue  # Riprova il ciclo con il nuovo token
+                        raise TadoAuthError("Non autorizzato anche dopo il refresh.")
 
-                response.raise_for_status()
-                return await response.json() if response.status != 204 else None
+                    # 2. Gestione Rate Limit (429 - Troppe richieste)
+                    if response.status == 429:
+                        if attempt < retries:
+                            # Tado ci sta bloccando per la raffica. Aspettiamo 2.5 secondi e riproviamo.
+                            _LOGGER.warning("Rate limit (429) raggiunto. Pausa di 2.5s prima di riprovare...")
+                            await asyncio.sleep(2.5)
+                            continue  # Riprova il ciclo
+                        # Se fallisce anche dopo le pause, solleva l'errore senza crashare
+                        raise TadoApiError("Rate limit di Tado superato costantemente. Impossibile comunicare.")
+
+                    # 3. Altri errori generali
+                    response.raise_for_status()
+                    
+                    # 4. Successo
+                    return await response.json() if response.status != 204 else None
 
     async def _fetch_me(self):
         """Recupera l'Home ID dell'utente."""

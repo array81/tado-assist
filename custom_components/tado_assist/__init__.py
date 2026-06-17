@@ -5,13 +5,13 @@ from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.issue_registry import async_delete_issue
 
 from .switch import TadoGeoreferencingSwitch, TadoWindowControlSwitch, TadoAwaySwitch
 from .const import DOMAIN, DEFAULT_SCAN_INTERVAL
-from .tado_api import TadoAPI, TadoAuthError
+from .tado_api import TadoAPI, TadoAuthError, TadoApiError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,10 +32,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         status_result = await tado.async_initialize()
-    except TadoAuthError as err:
-        # Se l'inizializzazione fallisce per token scaduto, invoca il repair flow
+    except (TadoAuthError, ConfigEntryAuthFailed) as err:
         _LOGGER.warning("TadoAPI: authentication failed, triggering reauth.")
         raise ConfigEntryAuthFailed("Autenticazione non riuscita, reauth necessaria.") from err
+    except TadoApiError as err:
+        # QUESTO È IL FIX: Se all'avvio Tado ci blocca per il Rate Limit o non c'è internet,
+        # diciamo ad HA di riprovare più tardi in background.
+        _LOGGER.warning("Server Tado non pronto o Rate Limit raggiunto all'avvio. Riprovo più tardi...")
+        raise ConfigEntryNotReady(f"Impossibile comunicare con Tado all'avvio: {err}") from err
+    except Exception as err:
+        # Cattura qualsiasi altro errore imprevisto
+        _LOGGER.error("Errore generico durante l'inizializzazione: %s", err)
+        raise ConfigEntryNotReady(f"Errore generico: {err}") from err
 
     status = status_result.get("status")
     
@@ -63,13 +71,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             open_window_zone_ids = [zone["id"] for zone in open_window_zones]
             open_window_zone_names = [zone["name"] for zone in open_window_zones]
             
-        except TadoAuthError as e:
-            # QUESTO SALVA DAL CRASH: se il token muore mentre Home Assistant è acceso, avvia il repair
-            _LOGGER.warning("Token expired during update, triggering reauth (Repair flow).")
-            raise ConfigEntryAuthFailed("Token scaduto, richiesta riconfigurazione.") from e
+        except (TadoAuthError, ConfigEntryAuthFailed) as e:
+            # QUESTO SALVA DAL CRASH: se il token muore definitivamente (revocato/scaduto per sempre)
+            _LOGGER.warning("Token scaduto in modo permanente, avvio Repair flow.")
+            raise ConfigEntryAuthFailed("Token non più valido, richiesta riconfigurazione.") from e
+            
         except Exception as e:
-            _LOGGER.error("Failed to fetch data from Tado: %s", e)
-            return hass.data[DOMAIN].get("last_data", {})
+            # Se siamo in Rate Limit (429) o manca internet, diciamo ad HA che l'aggiornamento è fallito!
+            # HA metterà le entità in "Non disponibile" e rallenterà automaticamente le chiamate per non farsi bannare.
+            _LOGGER.error("Errore di comunicazione con Tado: %s", e)
+            raise UpdateFailed(f"Errore di comunicazione: {e}") from e
 
         tado_georeferencing_status = any(
             isinstance(entity, TadoGeoreferencingSwitch) and entity.is_on

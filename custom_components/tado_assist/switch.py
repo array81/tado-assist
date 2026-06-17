@@ -3,6 +3,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN
 
@@ -17,7 +18,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
         TadoEnabledAssistSwitch(hass, entry, coordinator),
         TadoGeoreferencingSwitch(hass, entry, coordinator, tado),
         TadoWindowControlSwitch(hass, entry, coordinator, tado),
-        # ✅ NUOVO SWITCH AGGIUNTO QUI
         TadoAwaySwitch(hass, entry, coordinator, tado)
     ]
 
@@ -65,6 +65,11 @@ class TadoEnabledAssistSwitch(TadoBaseSwitch):
     def is_on(self):
         return self._attr_is_on
 
+    async def async_added_to_hass(self):
+        """Sincronizza lo stato ripristinato con la variabile globale al riavvio."""
+        await super().async_added_to_hass()
+        self.hass.data[DOMAIN]["tado_assist_status"] = self._attr_is_on
+
     async def async_turn_on(self, **kwargs):
         self._attr_is_on = True
         self.hass.data[DOMAIN]["tado_assist_status"] = True
@@ -87,11 +92,19 @@ class TadoGeoreferencingSwitch(TadoBaseSwitch):
     def is_on(self):
         return self._attr_is_on if self._attr_is_on is not None else False
 
+    async def async_added_to_hass(self):
+        """Sincronizza lo stato ripristinato con la variabile globale al riavvio."""
+        await super().async_added_to_hass()
+        self.hass.data[DOMAIN]["tado_georeferencing_status"] = self._attr_is_on
+
     async def async_turn_on(self, **kwargs):
         self._attr_is_on = True
         self.hass.data[DOMAIN]["tado_georeferencing_status"] = True
         self.async_write_ha_state()
-        await self.async_check_and_set_home_or_away()
+        try:
+            await self.async_check_and_set_home_or_away()
+        except Exception as e:
+            raise HomeAssistantError(f"Impossibile comunicare con Tado: {e}")
 
     async def async_turn_off(self, **kwargs):
         self._attr_is_on = False
@@ -120,11 +133,19 @@ class TadoWindowControlSwitch(TadoBaseSwitch):
     def is_on(self):
         return self._attr_is_on if self._attr_is_on is not None else False
 
+    async def async_added_to_hass(self):
+        """Sincronizza lo stato ripristinato con la variabile globale al riavvio."""
+        await super().async_added_to_hass()
+        self.hass.data[DOMAIN]["tado_window_control_status"] = self._attr_is_on
+
     async def async_turn_on(self, **kwargs):
         self._attr_is_on = True
         self.hass.data[DOMAIN]["tado_window_control_status"] = True
         self.async_write_ha_state()
-        await self.async_check_and_pause_thermostat()
+        try:
+            await self.async_check_and_pause_thermostat()
+        except Exception as e:
+            raise HomeAssistantError(f"Impossibile comunicare con Tado: {e}")
 
     async def async_turn_off(self, **kwargs):
         self._attr_is_on = False
@@ -141,20 +162,18 @@ class TadoWindowControlSwitch(TadoBaseSwitch):
 
 class TadoAwaySwitch(TadoBaseSwitch):
     """
-    Switch manuale per forzare la modalità Home/Away.
+    Switch manuale per forzare la modalita Home/Away.
     ON = Forza AWAY (Assente)
     OFF = Forza HOME (Presente)
     Si aggiorna automaticamente quando il coordinator scarica nuovi dati da Tado.
     """  
     def __init__(self, hass, entry, coordinator, tado):
-        # Ricordati di aggiungere "tado_switch_away" nel tuo file strings.json
         super().__init__(hass, entry, coordinator, "tado_switch_away_control", "away_switch_control")
         self.tado = tado
 
     @property
     def is_on(self):
-        # ✅ QUESTA PARTE RENDE LO SWITCH AUTOMATICO
-        # Se abbiamo dati aggiornati dal server, usiamo quelli per decidere se lo switch è ON o OFF
+        # Se abbiamo dati aggiornati dal server, usiamo quelli per decidere se lo switch e' ON o OFF
         if self.coordinator.data and "home_state" in self.coordinator.data:
             home_state = self.coordinator.data.get("home_state", {})
             presence = home_state.get("presence")
@@ -169,18 +188,24 @@ class TadoAwaySwitch(TadoBaseSwitch):
 
     async def async_turn_on(self, **kwargs):
         """Utente mette su ON -> Imposta AWAY."""
-        _LOGGER.info("Manually setting Tado to AWAY mode.")
-        await self.tado.set_away()
-        self._attr_is_on = True
-        self.async_write_ha_state()
-        # Richiede refresh immediato per allineare UI
-        await self.coordinator.async_request_refresh()
+        try:
+            _LOGGER.info("Manually setting Tado to AWAY mode.")
+            await self.tado.set_away()
+            self._attr_is_on = True
+            self.async_write_ha_state()
+            # Richiede refresh immediato per allineare UI
+            await self.coordinator.async_request_refresh()
+        except Exception as e:
+            raise HomeAssistantError(f"Impossibile comunicare con Tado: {e}")
 
     async def async_turn_off(self, **kwargs):
         """Utente mette su OFF -> Imposta HOME."""
-        _LOGGER.info("Manually setting Tado to HOME mode.")
-        await self.tado.set_home()
-        self._attr_is_on = False
-        self.async_write_ha_state()
-        # Richiede refresh immediato per allineare UI
-        await self.coordinator.async_request_refresh()
+        try:
+            _LOGGER.info("Manually setting Tado to HOME mode.")
+            await self.tado.set_home()
+            self._attr_is_on = False
+            self.async_write_ha_state()
+            # Richiede refresh immediato per allineare UI
+            await self.coordinator.async_request_refresh()
+        except Exception as e:
+            raise HomeAssistantError(f"Impossibile comunicare con Tado: {e}")

@@ -3,29 +3,46 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.const import CONF_SCAN_INTERVAL, UnitOfTime
+from homeassistant.helpers import config_entry_flow
 from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
-from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, MIN_SCAN_INTERVAL
+from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, MIN_SCAN_INTERVAL, CONF_API_URL, DEFAULT_API_URL
 from .tado_api import TadoAPI
 
 _LOGGER = logging.getLogger(__name__)
 
+# --- 1. OPTIONS FLOW HANDLER ---
 class TadoAssistOptionsFlowHandler(config_entries.OptionsFlow):
+    """Gestisce le opzioni dopo la prima installazione."""
+
     async def async_step_init(self, user_input=None):
+        """Gestisce il modulo delle opzioni."""
+        
         entry = getattr(self, "saved_config_entry", None)
+        
         current_interval = DEFAULT_SCAN_INTERVAL
+        current_api_url = DEFAULT_API_URL
+        
         if entry and hasattr(entry, "data"):
             current_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            current_api_url = entry.data.get(CONF_API_URL, DEFAULT_API_URL)
         
         if user_input is not None:
             if entry:
                 self.hass.config_entries.async_update_entry(
                     entry,
-                    data={**entry.data, CONF_SCAN_INTERVAL: user_input["scan_interval"]}
+                    data={
+                        **entry.data, 
+                        CONF_SCAN_INTERVAL: user_input["scan_interval"],
+                        CONF_API_URL: user_input.get(CONF_API_URL, DEFAULT_API_URL)
+                    }
                 )
             return self.async_create_entry(title="", data=user_input)
 
@@ -34,19 +51,28 @@ class TadoAssistOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema({
                 vol.Required("scan_interval", default=int(current_interval)): NumberSelector(
                     NumberSelectorConfig(
-                        min=MIN_SCAN_INTERVAL, max=3600, step=1,
-                        mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfTime.SECONDS
+                        min=MIN_SCAN_INTERVAL,
+                        max=3600,
+                        step=1,
+                        mode=NumberSelectorMode.BOX,
+                        unit_of_measurement=UnitOfTime.SECONDS
                     )
+                ),
+                vol.Required(CONF_API_URL, default=current_api_url): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.URL)
                 )
             })
         )
 
+
+# --- 2. CONFIG FLOW PRINCIPALE ---
 class TadoAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
+        """Crea il flusso opzioni."""
         flow = TadoAssistOptionsFlowHandler()
         flow.saved_config_entry = config_entry
         return flow
@@ -59,7 +85,7 @@ class TadoAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
         if not self.tado:
-            # FIX: Non passare il modulo 'config_entries', passa 'None' per entry nuova
+            # FIX: Non passare il modulo 'config_entries', usa 'None'
             self.tado = TadoAPI(self.hass, None)
 
         try:
@@ -67,7 +93,7 @@ class TadoAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             status = status_result.get("status")
             self._auth_url = status_result.get("auth_url")
 
-            if status == "NOT_STARTED":
+            if status in ["NOT_STARTED", "PENDING"]:
                 return await self.async_step_activation()
             elif status == "COMPLETED":
                 return await self.async_step_config()
@@ -88,8 +114,8 @@ class TadoAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "unknown"
 
         if not self._auth_url:
-             res = await self.tado.async_initialize(force_new=False)
-             self._auth_url = res.get("auth_url")
+            res = await self.tado.async_initialize(force_new=False)
+            self._auth_url = res.get("auth_url")
 
         return self.async_show_form(
             step_id="activation",
@@ -113,6 +139,7 @@ class TadoAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 title="Tado Assist",
                 data={
                     CONF_SCAN_INTERVAL: user_input["scan_interval"],
+                    CONF_API_URL: user_input.get(CONF_API_URL, DEFAULT_API_URL),
                     "refresh_token": self.tado.get_refresh_token(),
                 }
             )
@@ -122,15 +149,18 @@ class TadoAssistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required("scan_interval", default=DEFAULT_SCAN_INTERVAL): NumberSelector(
                     NumberSelectorConfig(min=MIN_SCAN_INTERVAL, max=3600, mode=NumberSelectorMode.BOX)
+                ),
+                vol.Required(CONF_API_URL, default=DEFAULT_API_URL): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.URL)
                 )
             })
         )
 
     async def async_step_reauth(self, entry_data):
         self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        # FIX: Usa l'entry corretto e non il modulo config_entries
         self.tado = TadoAPI(self.hass, self._reauth_entry, refresh_token=entry_data.get("refresh_token"))
-        # Forziamo una nuova autenticazione
-        await self.tado.async_initialize(force_new=True)
+        await self.tado.async_initialize(force_new=False)
         return await self.async_step_reauth_activation()
 
     async def async_step_reauth_activation(self, user_input=None):

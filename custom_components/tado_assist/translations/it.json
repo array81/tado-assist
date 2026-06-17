@@ -17,8 +17,12 @@
             },
             "config": {
                 "title": "Configurazione Tado Assist",
-                "description": "Scegli l'intervallo di aggiornamento dei dati."
-            }
+                "description": "Scegli l'intervallo di aggiornamento e l'indirizzo delle API.",
+                "data": {
+                    "scan_interval": "Intervallo aggiornamento (secondi)",
+                    "api_url": "Url API Tado"
+                }
+             }
         },
 		"data": {
 		  "auth_submitted": "Autenticazione sul sito Tado completata"
@@ -37,9 +41,10 @@
         "step": {
             "init": {
                 "title": "Opzioni di Tado Assist",
-                "description": "Seleziona l'intervallo di aggiornamento.",
+                "description": "Scegli l'intervallo di aggiornamento e l'indirizzo delle API.",
                 "data": {
-                    "scan_interval": "Intervallo di aggiornamento"
+                    "scan_interval": "Intervallo di aggiornamento",
+                    "api_url": "Url API Tado"
                 }
             }
         }

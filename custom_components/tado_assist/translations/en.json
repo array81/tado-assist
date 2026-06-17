@@ -16,13 +16,17 @@
                 }
             },
             "config": {
-                "title": "Tado Assist Configuration",
-                "description": "Choose the data update interval."
-            }
+                "title": "Tado Assist Options",
+                "description": "Select the update interval and Tado API URL.",
+                "data": {
+                    "scan_interval": "Update interval (seconds)",
+                    "api_url": "Tado API URL"
+                }
+             }
         },
-		"data": {
-		  "auth_submitted": "Autenticazione sul sito Tado completata"
-		},
+        "data": {
+          "auth_submitted": "Authentication on Tado website completed"
+        },
         "error": {
             "auth_not_started": "Authentication not started.",
             "unknown": "Unknown error.",
@@ -37,9 +41,10 @@
         "step": {
             "init": {
                 "title": "Tado Assist Options",
-                "description": "Select the update interval.",
+                "description": "Select the update interval and Tado API URL.",
                 "data": {
-                    "scan_interval": "Update interval"
+                    "scan_interval": "Update interval (seconds)",
+                    "api_url": "Tado API URL"
                 }
             }
         }
