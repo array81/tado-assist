@@ -64,6 +64,9 @@ This project is licensed under the [MIT License](LICENSE).
 ## 📌 Changelog
 Stay up to date with the latest changes and improvements:
 
+### v1.3.1
+- Fix get_mobile_devices function;
+
 ### v1.3.0
 - Added standalone Tado API Library;
 - Removed pyTado library dependency;

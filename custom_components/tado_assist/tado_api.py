@@ -184,8 +184,17 @@ class TadoAPI:
         devices = await self._request("GET", f"/homes/{self.home_id}/mobileDevices")
         count = 0
         for d in (devices or []):
-            if d.get("settings", {}).get("geoTrackingEnabled") and d.get("location", {}).get("atHome"):
+            # Controlla che il dispositivo sia effettivamente un dizionario valido
+            if not isinstance(d, dict):
+                continue
+            
+            # Usiamo "or {}" per prevenire i casi in cui l'API restituisce esplicitamente "null" (None in Python)
+            settings = d.get("settings") or {}
+            location = d.get("location") or {}
+            
+            if settings.get("geoTrackingEnabled") and location.get("atHome"):
                 count += 1
+                
         return count
 
     async def get_open_window_detected(self):
